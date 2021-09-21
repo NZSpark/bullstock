@@ -1,0 +1,326 @@
+
+
+1. install mySql
+sudo yum install mysql-server -y
+sudo systemctl start mysqld.service
+sudo mysql_secure_installation
+password:bullstock
+set GLOBAL  validate_password.check_user_name=OFF;
+uninstall plugin validate_password;
+uninstall component 'file://component_validate_password';
+vim /etc/my.cnf.d/mysql-server.cnf
+[mysqld]
+bind-address=192.168.1.12
+
+sudo firewall-cmd --list-all
+sudo firewall-cmd --zone=public --permanent --add-service=mysql
+sudo firewall-cmd --zone=public --permanent --add-port=2280
+sudo firewall-cmd --reload
+
+mysql -ubull -ppw_bull -Dcat < CatApplication.sql
+
+2. install tomcat
+https://linuxize.com/post/how-to-install-tomcat-9-on-centos-8/
+sudo useradd -m -U -d /opt/tomcat -s /bin/false tomcat
+VERSION=8.5.71
+wget https://www-eu.apache.org/dist/tomcat/tomcat-8/v${VERSION}/bin/apache-tomcat-${VERSION}.tar.gz -P /tmp
+VERSION=9.0.53
+wget https://www-eu.apache.org/dist/tomcat/tomcat-9/v${VERSION}/bin/apache-tomcat-${VERSION}.tar.gz -P /tmp
+sudo tar -xf /tmp/apache-tomcat-${VERSION}.tar.gz -C /opt/tomcat/
+sudo ln -s /opt/tomcat/apache-tomcat-${VERSION} /opt/tomcat/latest
+sudo chown -R tomcat: /opt/tomcat
+sudo sh -c 'chmod +x /opt/tomcat/latest/bin/*.sh'
+sudo nano /etc/systemd/system/tomcat.service
+[Unit]
+Description=Tomcat 9 servlet container
+After=network.target
+
+[Service]
+Type=forking
+
+User=tomcat
+Group=tomcat
+
+Environment="JAVA_HOME=/usr/lib/jvm/jre"
+Environment="JAVA_OPTS=-Djava.security.egd=file:///dev/urandom"
+
+Environment="CATALINA_BASE=/opt/tomcat/latest"
+Environment="CATALINA_HOME=/opt/tomcat/latest"
+Environment="CATALINA_PID=/opt/tomcat/latest/temp/tomcat.pid"
+Environment="CATALINA_OPTS=-Xms512M -Xmx1024M -server -XX:+UseParallelGC"
+
+ExecStart=/opt/tomcat/latest/bin/startup.sh
+ExecStop=/opt/tomcat/latest/bin/shutdown.sh
+
+[Install]
+WantedBy=multi-user.target
+
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now tomcat
+
+sudo firewall-cmd --permanent --zone=public --add-port=8080/tcp
+sudo firewall-cmd --reload
+sudo nano /opt/tomcat/latest/conf/tomcat-users.xml
+<tomcat-users>
+   <role rolename="admin-gui"/>
+   <role rolename="manager-gui"/>
+   <user username="admin" password="admin" roles="admin-gui,manager-gui,manager-script,manager-jmx"/>
+</tomcat-users>
+sudo nano /opt/tomcat/latest/webapps/manager/META-INF/context.xml
+<Context antiResourceLocking="false" privileged="true" >
+  <Valve className="org.apache.catalina.valves.RemoteAddrValve"
+         allow="127\.\d+\.\d+\.\d+|::1|0:0:0:0:0:0:0:1|192.168.\d+\.\d+" />
+</Context>
+
+sudo nano /opt/tomcat/latest/webapps/host-manager/META-INF/context.xml
+<Context antiResourceLocking="false" privileged="true" >
+<!--
+  <Valve className="org.apache.catalina.valves.RemoteAddrValve"
+         allow="127\.\d+\.\d+\.\d+|::1|0:0:0:0:0:0:0:1" />
+-->
+</Context>
+
+sudo nano /opt/tomcat/latest/bin/catalina.sh
+export CAT_HOME=/data/appdatas/cat/
+CATALINA_OPTS="-Xms024m -Xmx2048m -Xss1024k -XX:MetaspaceSize=512m -XX:MaxMetaspaceSize=1024m"
+
+sudo nano /opt/tomcat/latest/conf/server.xml
+<Connector port="8080" protocol="HTTP/1.1"
+           URIEncoding="utf-8"    
+		   connectionTimeout="20000"
+           redirectPort="8443" />  <!-- 增加  URIEncoding="utf-8"  -->  
+
+
+sudo vim  /opt/tomcat/latest/logs/catalina.2021-09-20.log
+
+
+
+
+vim ~/.m2/settings.xml 
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+      <localRepository/>
+      <interactiveMode/>
+      <offline/>
+      <pluginGroups/>
+	  <servers>
+		<server>
+			<id>TomcatServer</id>
+			<username>admin</username>
+			<password>admin</password>
+		</server>
+	  </servers>
+      <mirrors/>
+      <proxies/>
+      <profiles/>
+      <activeProfiles/>
+</settings>
+
+cd ~/GitHub/cat
+vim pom.xml
+<plugin>
+	<groupId>org.apache.tomcat.maven</groupId>
+	<artifactId>tomcat7-maven-plugin</artifactId>
+	<version>2.2</version>
+	<configuration>
+		<url>http://192.168.1.12:8080/manager/text</url>
+		<server>TomcatServer</server>
+		<path>/cat</path>
+	</configuration>
+</plugin>
+
+mvn tomcat7:deploy 
+mvn tomcat7:undeploy 
+mvn tomcat7:redeploy 
+
+sudo ls -l /opt/tomcat/latest/webapps
+sudo tail /opt/tomcat/latest/logs/catalina.out
+
+sudo systemctl restart tomcat
+
+
+3. Install CAT. Central Application Tracing.
+3.1 build war file
+sudo yum install git maven docker
+git init
+
+git clone https://github.com/dianping/cat
+git checkout mvn-repo
+cp org ~/.m2/repository/org
+git checkout master
+vim pom.xml -> modify dependency org.unidal.framework:test-framework:2.4.0 -> 2.5.0 <- lazy mantiainers.
+mvn clean package -DskipTests
+./cat-home/target/cat-home-3.0.0.war
+
+wget http://unidal.org/nexus/service/local/repositories/releases/content/com/dianping/cat/cat-home/3.0.0/cat-home-3.0.0.war
+sudo systemctl stop tomcat
+sudo rm -rf /opt/tomcat/latest/webapps/cat
+sudo rm -rf /opt/tomcat/latest/webapps/cat.war
+sudo cp ~/tmp/cat-home-3.0.0.war /opt/tomcat/latest/webapps/cat.war
+sudo systemctl start tomcat
+
+
+
+3.2 configure 
+mkdir -p /data/appdatas/cat
+mkdir -p /data/applogs/cat
+chmod 777 -R /data
+
+sudo nano /data/appdatas/cat/client.xml
+<?xml version="1.0" encoding="utf-8"?>
+<config mode="client">
+    <servers>
+        <server ip="192.168.1.12" port="2280" http-port="8080"/>
+    </servers>
+</config>
+
+sudo nano /data/appdatas/cat/datasources.xml
+<?xml version="1.0" encoding="utf-8"?>
+<data-sources>
+	<data-source id="cat">
+		<maximum-pool-size>3</maximum-pool-size>
+		<connection-timeout>1s</connection-timeout>
+		<idle-timeout>10m</idle-timeout>
+		<statement-cache-size>1000</statement-cache-size>
+		<properties>
+			<driver>com.mysql.jdbc.Driver</driver>
+			<url><![CDATA[jdbc:mysql://192.168.1.12:3306/cat]]</url>
+			<user>bull</user>
+			<password>pw_bull</password>
+			<connectionProperties><![CDATA[useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&socketTimeout=120000]]</connectionProperties>
+		</properties>
+	</data-source>
+</data-sources>
+
+
+3.3 website
+Client Route Config:
+http://192.168.1.12:8080/cat/s/config?op=routerConfigUpdate
+
+<?xml version="1.0" encoding="utf-8"?>
+<router-config backup-server="192.168.1.12" backup-server-port="2280">
+   <default-server id="192.168.1.12" weight="1.0" port="2280" enable="true"/>
+   <network-policy id="default" title="默认" block="false" server-group="default_group">
+   </network-policy>
+   <server-group id="default_group" title="default-group">
+      <group-server id="192.168.1.12"/>
+   </server-group>
+   <domain id="cat">
+      <group id="default">
+         <server id="192.168.1.12" port="2280" weight="1.0"/>
+      </group>
+   </domain>
+</router-config>
+
+http://192.168.1.12:8080/cat/s/config?op=serverConfigUpdate
+<?xml version="1.0" encoding="utf-8"?>
+<server-config>
+   <server id="default">
+      <properties>
+         <property name="local-mode" value="true"/>
+         <property name="job-machine" value="false"/>
+         <property name="send-machine" value="false"/>
+         <property name="alarm-machine" value="false"/>
+         <property name="hdfs-enabled" value="false"/>
+         <property name="remote-servers" value="127.0.0.1:8080"/>
+      </properties>
+            <storage local-base-dir="target/bucket" max-hdfs-storage-time="15" local-report-storage-time="3" local-logivew-storage-time="7" har-mode="true" upload-thread="5">
+      </storage>
+      <consumer>
+         <long-config default-url-threshold="1000" default-sql-threshold="100" default-service-threshold="50">
+         </long-config>
+      </consumer>
+   </server>
+   <server id="127.0.0.1">
+      <properties>
+         <property name="job-machine" value="true"/>
+         <property name="send-machine" value="true"/>
+         <property name="alarm-machine" value="true"/>
+      </properties>
+   </server>
+</server-config>
+
+4. execute cat-demo
+nohup java -jar -Xms512M -Xmx1024M  cat-demo-gateway.jar &
+nohup java -jar -Xms512M -Xmx1024M  cat-demo-order.jar &
+nohup java -jar -Xms512M -Xmx1024M  cat-demo-account.jar &
+nohup java -jar -Xms512M -Xmx1024M  cat-demo-stock.jar &
+
+sudo systemctl stop firewalld
+
+http://192.168.1.12:8081/gateway
+http://192.168.1.12:8082/order
+http://192.168.1.12:8083/account
+http://192.168.1.12:8084/stock
+http://192.168.1.12:8081/timeout
+
+
+
+
+
+5. install Sentinel
+java -Dserver.port=8090 \
+-Dcsp.sentinel.dashboard.server=localhost:8090 \
+-Dproject.name=sentinel-dashboard \
+-jar /home/spark/GitHub/Sentinel/sentinel-dashboard/target/sentinel-dashboard.jar
+
+
+
+100. Error:  Could not find artifact org.unidal.framework:foundation-service:jar:2.5.0 in central (https://repo1.maven.org/maven2)
+-> check https://repo1.maven.org/maven2/org/unidal/framework/foundation-service/
+-> modify pom.xml -> org.unidal.framework:foundation-service:jar:2.5.0 -> 4.1.1
+-> find ~/.m2 -name \*.lastUpdated -exec rm -fv {} +
+-> mvn clean install -DskipTests
+
+101. Error: Cannot resolve org.unidal.framework:test-framework:2.4.0
+-> git checkout mvn-repo
+-> cp org .m2/repository/org
+-> modify pom.xml -> org.unidal.framework:test-framework:2.4.0 -> 2.5.0
+
+
+102. Error:  Execution generate data model of goal org.unidal.maven.plugins:codegen-maven-plugin:2.5.8:dal-model failed: Plugin org.unidal.maven.plugins:codegen-maven-plugin:2.5.8 or one of its dependencies could not be resolved: Failure to find org.codehaus.plexus:plexus-container-default:jar:3.1.0 
+->在.m2仓库找到org.unidal.maven.plugins:codegen-maven-plugin:2.5.8版本的pom文件codegen-maven-plugin-2.5.8.pom用idea打开，点击父引用的default，跳转到default-2.5.8.pom文件中，将文件中foundation-service.version从3.1.0版本修改为4.0.0版本；
+->  vim ~/.m2/repository/org/unidal/maven/plugins/default/2.5.8/default-2.5.8.pom
+<foundation-service.version>3.1.0</foundation-service.version> -> <foundation-service.version>4.0.0</foundation-service.version>
+
+
+
+
+103.Error: Execution generate data model of goal org.unidal.maven.plugins:codegen-maven-plugin:2.5.8:dal-model failed: Plugin org.unidal.maven.plugins:codegen-maven-plugin:2.5.8 or one of its dependencies could not be resolved: Failure to find org.codehaus.plexus:plexus-container-default:jar:3.1.0
+-> check http://unidal.org/nexus/content/repositories/releases/org/unidal/maven/plugins/codegen-maven-plugin/
+-> modify pom.xml -> org.unidal.maven.plugins:codegen-maven-plugin:2.5.8 -> 5.0.0
+                  -> org.unidal.maven.plugins:plexus-maven-plugin:2.5.8 -> 5.0.0
+-> mvn clean dependency:resolve
+
+104. Error:  The following artifacts could not be resolved: org.codehaus.plexus:plexus-container-default:jar:3.1.0, org.unidal.framework:test-framework:jar:2.4.0: Could not find artifact org.codehaus.plexus:plexus-container-default:jar:3.1.0
+-> check https://repo1.maven.org/maven2/org/unidal/framework/test-framework/, only 4.1.1 available
+-> modify  pom.xml -> org.unidal.framework:test-framework:jar:2.4.0 : 2.4.0 -> 4.1.1
+-> rm -rf ~/.m2/repository/org/codehaus
+-> mvn dependency:tree -Dincludes=org.codehaus.plexus
+com.dianping.cat:cat-client:jar:3.0.0
+[DEBUG]    org.unidal.framework:foundation-service:jar:3.1.0:compile
+[DEBUG]       org.codehaus.plexus:plexus-container-default:jar:3.1.0:compile
+-> check https://repo1.maven.org/maven2/org/unidal/framework/test-framework/, only 4.1.1 available
+-> modify  pom.xml -> org.unidal.framework:test-framework:jar:2.4.0 : 2.4.0 -> 4.1.1
+
+105. Error: The following artifacts could not be resolved: org.unidal.framework:foundation-service:jar:2.5.0, org.unidal.framework:test-framework:jar:2.4.0: Could not find artifact org.unidal.framework:foundation-service:jar:2.5.0
+->check http://unidal.org/nexus/content/repositories/releases/org/unidal/, 2.5.0 should be replaced by 3.1.0
+->modify pom.xml -> 2.5.0 -> 3.1.0
+
+
+106. Error:  The following artifacts could not be resolved: org.unidal.framework:web-framework:jar:2.4.0, org.unidal.framework:dal-jdbc:jar:2.4.0: Could not find artifact org.unidal.framework:web-framework:jar:2.4.0 
+-> check http://unidal.org/nexus/content/repositories/releases/org/unidal/framework/web-framework/, only 6.0.0
+
+107. Error:  Failure to find org.unidal.framework:dal-jdbc:jar:2.4.0 in https://repo1.maven.org/maven2 was cached in the local repositor
+-> http://unidal.org/nexus/content/repositories/releases/org/unidal/framework/dal-jdbc/, only 6.0.0
+
+108. Error: Failed to execute goal org.apache.tomcat.maven:tomcat7-maven-plugin:2.2:deploy (default-cli) on project cat-home: Cannot find war file: /home/spark/GitHub/cat/cat-home/target/cat-home-3.0.0.war -> 
+-> vim cat-home/pom.xml -> <env>alpha</env> -> <env>home</env> -
+
+109. Error occured when handling uri: /cat/s/router
+-> /data/appdatas/cat/datasources.xml -> <![CDATA[ is neccessary
+-> <url><![CDATA[jdbc:mysql://192.168.1.12:3306/cat]]</url>
+-> <connectionProperties><![CDATA[useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&socketTimeout=120000]]
+
+https://blog.csdn.net/JingleLiA/article/details/107227653
