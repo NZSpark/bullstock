@@ -12,6 +12,7 @@
         <module>bull-stock-gateway</module>
         <module>bull-stock-user</module>
         <module>cat-demo</module>
+        <module>sentinel-demo</module>
     </modules>
 
     <properties>
