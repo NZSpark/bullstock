@@ -266,6 +266,31 @@ java -Dserver.port=8090 \
 -jar /home/spark/GitHub/Sentinel/sentinel-dashboard/target/sentinel-dashboard.jar
 
 
+6. install SEATA
+
+docker run --name seata-server -p 8091:8091 seataio/seata-server:latest
+docker run --name seata-server \
+        -p 8091:8091 \
+        -e SEATA_IP=192.168.1.12 \
+        -e SEATA_PORT=8091 \
+        seataio/seata-server
+
+docker logs -f seata-server
+
+/*------
+"C:\Program Files\putty\PSCP.EXE" seata-server-0.9.zip spark@192.168.1.12:/home/spark
+vim file.conf
+mysql -ubull -ppw_bull -Dseata < db_store.sql
+------*/
+
+http://localhost:9999/demo/asset/assign
+
+
+
+
+
+
+
 
 100. Error:  Could not find artifact org.unidal.framework:foundation-service:jar:2.5.0 in central (https://repo1.maven.org/maven2)
 -> check https://repo1.maven.org/maven2/org/unidal/framework/foundation-service/
