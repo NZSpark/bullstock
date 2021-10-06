@@ -265,8 +265,31 @@ java -Dserver.port=8090 \
 -Dproject.name=sentinel-dashboard \
 -jar /home/spark/GitHub/Sentinel/sentinel-dashboard/target/sentinel-dashboard.jar
 
+6.Hateoas
+http://localhost:8080
+http://localhost:8080/stocks
+http://localhost:8080/stocks/search
+{
+  "_links" : {
+    "findByName" : {
+      "href" : "http://localhost:8080/stocks/search/findByName{?name}",
+      "templated" : true
+    },
+    "findByNameInOrderById" : {
+      "href" : "http://localhost:8080/stocks/search/findByNameInOrderById{?list}",
+      "templated" : true
+    },
+    "self" : {
+      "href" : "http://localhost:8080/stocks/search"
+    }
+  }
+}
+http://localhost:8080/stocks/search/findByName?name=%E5%B7%A5%E5%95%86%E9%93%B6%E8%A1%8C
 
-6. install SEATA
+http://localhost:8082/order
+
+
+7. install SEATA
 
 docker run --name seata-server -p 8091:8091 seataio/seata-server:latest
 docker run --name seata-server \
